@@ -1,0 +1,23 @@
+---
+BasedOnStyle: LLVM
+AlignAfterOpenBracket: false
+AlignArrayOfStructures: Right
+AlignEscapedNewlines: Left
+AlignOperands: DontAlign
+AllowShortCaseLabelsOnASingleLine: true
+BreakTemplateDeclarations: Yes
+ColumnLimit: 100
+Cpp11BracedListStyle: false
+FixNamespaceComments: false
+IndentCaseLabels: true
+IndentPPDirectives: BeforeHash
+IndentWidth: 4
+InsertBraces: true
+InsertNewlineAtEOF: true
+PackConstructorInitializers: NextLine
+PointerAlignment: Left
+SortIncludes: Never
+Standard: c++20
+TabWidth: 4
+WrapNamespaceBodyWithEmptyLines: Always
+...
