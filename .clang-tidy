@@ -18,7 +18,7 @@ Checks: >
   -modernize-use-auto,
   -modernize-use-ranges,
   -modernize-use-nodiscard,
-  -modernize-use-designated-initializers
+  -modernize-use-designated-initializers,
   -modernize-pass-by-value,
 
   readability-identifier-naming

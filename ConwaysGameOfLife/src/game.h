@@ -1,8 +1,11 @@
 #pragma once
+#pragma once
 
 #include <raylib.h>
-#include <array>
+#include <unordered_set>
 #include <cstdint>
+
+namespace GoL {
 
 class Game {
   public:
@@ -12,28 +15,46 @@ class Game {
     void Run();
 
   private:
+    struct Vec2i {
+      public:
+        int X;
+        int Y;
+
+        bool operator==(const Vec2i& other) const { return X == other.X && Y == other.Y; }
+    };
+
+    struct Vec2iHash {
+        std::size_t operator()(const Vec2i& p) const {
+            return std::hash<int64_t>()(
+                (static_cast<int64_t>(p.X) << 32) ^ static_cast<unsigned int>(p.Y));
+        }
+    };
+
     enum CellType : uint8_t { ALIVE, DEAD };
 
-    friend CellType operator~(CellType type) {
-        return type == ALIVE ? DEAD : ALIVE;
-    }
+    friend CellType operator~(CellType type) { return type == ALIVE ? DEAD : ALIVE; }
 
-    void Update();
+    void Update(float dt);
     void Draw() const;
 
+    void ToggleCell(Vec2i pos);
     void Clear();
     void Randomize();
     void Step();
 
-    static constexpr int WINDOW_WIDTH = 1920;
-    static constexpr int WINDOW_HEIGHT = 1080;
     static constexpr float CELL_SIZE = 20.0f;
-    static constexpr int CELL_NB_ROW = static_cast<int>(WINDOW_HEIGHT / CELL_SIZE);
-    static constexpr int CELL_NB_COL = static_cast<int>(WINDOW_WIDTH / CELL_SIZE);
+    int m_ScreenWidth = 1920;
+    int m_ScreenHeight = 1080;
 
-    std::array<std::array<CellType, CELL_NB_COL>, CELL_NB_ROW> m_Grid;
+    Camera2D m_Camera;
+    static constexpr float CAMERA_SPEED = 600.0f;
+    static constexpr float ZOOM_SPEED = 60.0f;
+
+    std::unordered_set<Vec2i, Vec2iHash> m_AliveCells;
 
     bool m_Simulating = false;
     float m_Timer = 0.0f;
     float m_UpdateInterval = 0.1f;
 };
+
+}

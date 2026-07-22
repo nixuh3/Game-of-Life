@@ -6,7 +6,7 @@ AlignEscapedNewlines: Left
 AlignOperands: DontAlign
 AllowShortCaseLabelsOnASingleLine: true
 BreakTemplateDeclarations: Yes
-ColumnLimit: 100
+ColumnLimit: 110
 Cpp11BracedListStyle: false
 FixNamespaceComments: false
 IndentCaseLabels: true

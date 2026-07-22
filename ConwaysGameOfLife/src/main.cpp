@@ -1,7 +1,7 @@
 #include "game.h"
 
 int main() {
-    Game* game = new Game;
+    auto game = new GoL::Game;
     game->Run();
     delete game;
 
