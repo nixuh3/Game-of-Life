@@ -37,17 +37,29 @@ struct Vec2 {
     Vec2 operator/(const Vec2& rhs) const noexcept { return Vec2(*this) /= rhs; }
 
     Vec2 operator*(const T& scalar) const noexcept { return { x * scalar, y * scalar }; }
+    Vec2 operator/(const T& scalar) const noexcept { return { x / scalar, y / scalar }; }
 
     struct Hash {
         size_t operator()(const Vec2<T>& v) const noexcept {
-            size_t h1 = std::hash<T>{}(v.x);
-            size_t h2 = std::hash<T>{}(v.y);
-            return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+            uint64_t packed = (static_cast<uint64_t>(v.x) << 32) | (static_cast<uint32_t>(v.y));
+            return std::hash<uint64_t>{}(packed);
         }
     };
 };
 
 using Vec2i = Vec2<int>;
 using Vec2f = Vec2<float>;
+
+// Half Adder: Sums two 64-bit words bit-by-bit
+constexpr void HalfAdd(uint64_t a, uint64_t b, uint64_t& sum, uint64_t& carry) {
+    sum = a ^ b;
+    carry = a & b;
+}
+
+// Full Adder: Sums three 64-bit words bit-by-bit
+constexpr void FullAdd(uint64_t a, uint64_t b, uint64_t c, uint64_t& sum, uint64_t& carry) {
+    sum = a ^ b ^ c;
+    carry = (a & b) | (c & (a ^ b));
+}
 
 }

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 
+#include "Chunk.h"
 #include "Math.h"
 
 namespace GoL {
@@ -34,9 +35,10 @@ class Game {
     void Clear();
     void Randomize(); // Only inside the viewport
     void Step();
-    bool ParseRuleString();
+    void ParseRuleString();
 
     static constexpr float CELL_SIZE = 20.0f;
+    static constexpr float CHUNK_WORLD_SIZE = 64.0f * CELL_SIZE;
     int m_windowWidth;
     int m_windowHeight;
 
@@ -44,13 +46,14 @@ class Game {
     static constexpr float CAMERA_SPEED = 600.0f;
     static constexpr float ZOOM_SPEED = 60.0f;
 
-    using Grid = std::unordered_set<Vec2i, Vec2i::Hash>;
-    Grid m_activeCells;
+    ChunkMap m_chunks;
+    ChunkMap m_nextChunks;
 
     std::string m_ruleString;
-    std::unordered_set<int> m_birth;
-    std::unordered_set<int> m_survival;
+    uint16_t m_birthMask = 0;
+    uint16_t m_survivalMask = 0;
 
+    std::unordered_map<Vec2i, int, Vec2i::Hash> m_neighborCounts;
     bool m_simulating = false;
     float m_timer = 0.0f;
     float m_updateInterval = 0.1f;
