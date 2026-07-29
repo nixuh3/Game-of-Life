@@ -15,8 +15,6 @@ constexpr CellType operator~(CellType type) { return type == ALIVE ? DEAD : ALIV
 struct Game::Impl {
     static constexpr float CELL_SIZE = 20.0f;
     static constexpr float CHUNK_WORLD_SIZE = 64.0f * CELL_SIZE;
-    static constexpr float CAMERA_SPEED = 600.0f;
-    static constexpr float ZOOM_SPEED = 60.0f;
 
     int m_windowWidth;
     int m_windowHeight;
