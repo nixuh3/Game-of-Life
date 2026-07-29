@@ -4,7 +4,6 @@
 #include <raymath.h>
 #include <cmath>
 #include <cctype>
-#include <bit>
 #include <unordered_set>
 #include <cstdint>
 #include <string>
@@ -48,7 +47,7 @@ struct Game::Impl {
     ~Impl();
 
     void Update(float dt);
-    void Draw() const;
+    void Draw();
     void ToggleCell(const Vec2i& pos);
     void Clear();
     void Randomize();
@@ -142,7 +141,7 @@ void Game::Impl::Update(float dt) {
     }
 }
 
-void Game::Impl::Draw() const {
+void Game::Impl::Draw() {
     BeginDrawing();
     ClearBackground(BLACK);
 
@@ -157,32 +156,29 @@ void Game::Impl::Draw() const {
     int minChunkY = static_cast<int>(std::floor(topLeftWorld.y / CHUNK_WORLD_SIZE));
     int maxChunkY = static_cast<int>(std::floor(bottomRightWorld.y / CHUNK_WORLD_SIZE));
 
-    for (const auto& [chunkPos, chunk] : m_chunks) {
+    // Source rectangle is always the full 64x64 texture
+    const Rectangle sourceRect = { 0.0f, 0.0f, 64.0f, 64.0f };
+
+    for (auto& [chunkPos, chunk] : m_chunks) {
         if (chunkPos.x < minChunkX || chunkPos.x > maxChunkX || chunkPos.y < minChunkY ||
             chunkPos.y > maxChunkY) {
             continue;
         }
 
-        // Base world coordinates of the top-left corner of this chunk
-        float chunkBaseX = static_cast<float>(chunkPos.x * 64) * CELL_SIZE;
-        float chunkBaseY = static_cast<float>(chunkPos.y * 64) * CELL_SIZE;
+        // Top-left world coordinate of this chunk
+        float chunkBaseX = static_cast<float>(chunkPos.x) * CHUNK_WORLD_SIZE;
+        float chunkBaseY = static_cast<float>(chunkPos.y) * CHUNK_WORLD_SIZE;
 
-        for (int r = 0; r < 64; ++r) {
-            uint64_t rowBits = chunk.rows[r];
-            float cellY = chunkBaseY + static_cast<float>(r) * CELL_SIZE;
+        // Destination rectangle in world space
+        Rectangle destRect = { chunkBaseX, chunkBaseY, CHUNK_WORLD_SIZE, CHUNK_WORLD_SIZE };
 
-            // Loop only as many times as there are live cells in this row
-            while (rowBits != 0) {
-                // Find the index of the lowest set bit
-                int c = std::countr_zero(rowBits);
-
-                float cellX = chunkBaseX + static_cast<float>(c) * CELL_SIZE;
-                DrawRectangleRec({ cellX, cellY, CELL_SIZE, CELL_SIZE }, GREEN);
-
-                // Clear the lowest set bit to move to the next live cell
-                rowBits &= (rowBits - 1);
-            }
+        // Ensure the GPU texture is up-to-date before drawing
+        if (chunk.isDirty) {
+            chunk.UpdateChunkTexture();
         }
+
+        // Draw the ENTIRE 64x64 chunk in a single GPU call
+        DrawTexturePro(chunk.texture, sourceRect, destRect, { 0.0f, 0.0f }, 0.0f, WHITE);
     }
 
     EndMode2D();
@@ -370,7 +366,15 @@ void Game::Impl::Step() {
 
         // Only save the chunk if it contains at least one living cell
         if (hasLiveCells) {
-            m_nextChunks[chunkPos] = nextChunk;
+            // If this chunk already had a GPU texture last frame, reuse it!
+            auto oldIt = m_chunks.find(chunkPos);
+            if (oldIt != m_chunks.end() && oldIt->second.texture.id != 0) {
+                nextChunk.texture = oldIt->second.texture;
+                oldIt->second.texture = {}; // Nullify old so it doesn't get unloaded
+                nextChunk.isDirty = true;
+            }
+
+            m_nextChunks[chunkPos] = std::move(nextChunk);
         }
     }
 
