@@ -1,15 +1,10 @@
 #include "Game.h"
-
-#include <raylib.h>
-#include <raymath.h>
-#include <cmath>
-#include <cctype>
-#include <unordered_set>
-#include <cstdint>
-#include <string>
-
 #include "Chunk.h"
 #include "Math.h"
+#include "Rules.h"
+#include "Simulation.h"
+#include "CameraController.h"
+#include <raymath.h>
 
 namespace GoL {
 
@@ -26,14 +21,13 @@ struct Game::Impl {
     int m_windowWidth;
     int m_windowHeight;
 
-    Camera2D m_camera{};
+    CameraController m_camera;
 
     ChunkMap m_chunks;
     ChunkMap m_nextChunks;
 
-    std::string m_ruleString;
-    uint16_t m_birthMask = 0;
-    uint16_t m_survivalMask = 0;
+    std::string_view m_ruleString;
+    RuleSet m_rules;
 
     std::unordered_map<Vec2i, int, Vec2i::Hash> m_neighborCounts;
 
@@ -51,23 +45,20 @@ struct Game::Impl {
     void ToggleCell(const Vec2i& pos);
     void Clear();
     void Randomize();
-    void Step();
-    void ParseRuleString();
 };
 
 Game::Impl::Impl(const GameSpecs& specs)
-    : m_windowWidth(specs.windowWidth), m_windowHeight(specs.windowHeight), m_ruleString(specs.ruleString) {
+    : m_windowWidth(specs.windowWidth),
+      m_windowHeight(specs.windowHeight),
+      m_ruleString(specs.ruleString),
+      m_camera(m_windowWidth, m_windowHeight) {
+
     InitWindow(m_windowWidth, m_windowHeight, "Game of Life");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     // SetTargetFPS(60);
 
     Clear();
-    ParseRuleString();
-
-    m_camera.offset = { static_cast<float>(m_windowWidth) / 2.0f, static_cast<float>(m_windowHeight) / 2.0f };
-    m_camera.target = { 0.0f, 0.0f };
-    m_camera.rotation = 0.0f;
-    m_camera.zoom = 1.0f;
+    m_rules = RuleSet::Parse(m_ruleString);
 }
 
 Game::Impl::~Impl() { CloseWindow(); }
@@ -76,10 +67,11 @@ void Game::Impl::Update(float dt) {
     // Update screen dimensions
     m_windowWidth = GetScreenWidth();
     m_windowHeight = GetScreenHeight();
-    m_camera.offset = { static_cast<float>(m_windowWidth) / 2.0f, static_cast<float>(m_windowHeight) / 2.0f };
+
+    m_camera.Update(dt, m_windowWidth, m_windowHeight);
 
     // Mouse inputs
-    Vector2 mousePos = GetScreenToWorld2D(GetMousePosition(), m_camera);
+    Vector2 mousePos = m_camera.GetMouseWorldPos();
     int mouseX = static_cast<int>(std::floor(mousePos.x / CELL_SIZE));
     int mouseY = static_cast<int>(std::floor(mousePos.y / CELL_SIZE));
     m_mouseTarget = { mouseX, mouseY };
@@ -87,31 +79,10 @@ void Game::Impl::Update(float dt) {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         ToggleCell(m_mouseTarget);
     }
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-        Vector2 delta = GetMouseDelta();
-
-        m_camera.target.x -= delta.x / m_camera.zoom;
-        m_camera.target.y -= delta.y / m_camera.zoom;
-    }
-    float wheel = GetMouseWheelMove();
-    if (wheel != 0.0f) {
-        Vector2 mouseWorldBefore = GetScreenToWorld2D(GetMousePosition(), m_camera);
-
-        m_camera.zoom = std::exp(std::log(m_camera.zoom) + wheel * 0.1f);
-        m_camera.zoom = Clamp(m_camera.zoom, 0.05f, 3.0f);
-
-        Vector2 mouseWorldAfter = GetScreenToWorld2D(GetMousePosition(), m_camera);
-
-        m_camera.target.x += (mouseWorldBefore.x - mouseWorldAfter.x);
-        m_camera.target.y += (mouseWorldBefore.y - mouseWorldAfter.y);
-    }
 
     // Keyboard inputs
-    m_camera.target.x += static_cast<float>(IsKeyDown(KEY_RIGHT) - IsKeyDown(KEY_LEFT)) * dt * CAMERA_SPEED;
-    m_camera.target.y += static_cast<float>(IsKeyDown(KEY_DOWN) - IsKeyDown(KEY_UP)) * dt * CAMERA_SPEED;
-
     if (IsKeyPressed(KEY_X)) {
-        Step();
+        Simluation::Step(m_chunks, m_nextChunks, m_rules);
     }
     if (IsKeyPressed(KEY_R)) {
         Randomize();
@@ -136,7 +107,7 @@ void Game::Impl::Update(float dt) {
     // Update timer
     m_timer += GetFrameTime();
     if (m_simulating && m_timer >= m_updateInterval) {
-        Step();
+        Simluation::Step(m_chunks, m_nextChunks, m_rules);
         m_timer = 0.0f;
     }
 }
@@ -145,11 +116,10 @@ void Game::Impl::Draw() {
     BeginDrawing();
     ClearBackground(BLACK);
 
-    BeginMode2D(m_camera);
+    BeginMode2D(m_camera.GetCamera());
 
-    Vector2 topLeftWorld = GetScreenToWorld2D({ 0.0f, 0.0f }, m_camera);
-    Vector2 bottomRightWorld = GetScreenToWorld2D(
-        { static_cast<float>(m_windowWidth), static_cast<float>(m_windowHeight) }, m_camera);
+    Vector2 topLeftWorld = m_camera.GetTopLeftWorld();
+    Vector2 bottomRightWorld = m_camera.GetBottomRightWorld(m_windowWidth, m_windowHeight);
 
     int minChunkX = static_cast<int>(std::floor(topLeftWorld.x / CHUNK_WORLD_SIZE));
     int maxChunkX = static_cast<int>(std::floor(bottomRightWorld.x / CHUNK_WORLD_SIZE));
@@ -192,7 +162,7 @@ void Game::Impl::Draw() {
         };
 
         DrawDebugText("%2d FPS", GetFPS());
-        DrawDebugText("Rule string: %s", m_ruleString.c_str());
+        DrawDebugText("Rule string: %s", m_ruleString.data());
         DrawDebugText("Update interval: %.2f", m_updateInterval);
         DrawDebugText("Simulation speed: %.2f", 1.0f / m_updateInterval);
         DrawDebugText("Mouse target cell: %d, %d", m_mouseTarget.x, m_mouseTarget.y);
@@ -222,9 +192,8 @@ void Game::Impl::Clear() {
 void Game::Impl::Randomize() {
     Clear();
 
-    Vector2 topLeftWorld = GetScreenToWorld2D({ 0.0f, 0.0f }, m_camera);
-    Vector2 bottomRightWorld = GetScreenToWorld2D(
-        { static_cast<float>(m_windowWidth), static_cast<float>(m_windowHeight) }, m_camera);
+    Vector2 topLeftWorld = m_camera.GetTopLeftWorld();
+    Vector2 bottomRightWorld = m_camera.GetBottomRightWorld(m_windowWidth, m_windowHeight);
 
     int minX = static_cast<int>(std::floor(topLeftWorld.x / CELL_SIZE));
     int maxX = static_cast<int>(std::ceil(bottomRightWorld.x / CELL_SIZE));
@@ -236,169 +205,6 @@ void Game::Impl::Randomize() {
             if (GetRandomValue(1, 3) == 1) {
                 LocalCellPos local = GlobalToLocal({ x, y });
                 m_chunks[local.chunkPos].SetCell(local.localPos);
-            }
-        }
-    }
-}
-
-void Game::Impl::Step() {
-    m_nextChunks.clear();
-
-    // Any active chunk + all 8 of its surrounding empty chunks
-    std::unordered_set<Vec2i, Vec2i::Hash> chunksToProcess;
-    for (const auto& [pos, chunk] : m_chunks) {
-        if (chunk.IsEmpty()) {
-            continue;
-        }
-
-        for (int dy = -1; dy <= 1; ++dy) {
-            for (int dx = -1; dx <= 1; ++dx) {
-                chunksToProcess.insert(pos + Vec2i{ dx, dy });
-            }
-        }
-    }
-
-    // Evaluate each chunk in parallel across its 64-bit rows
-    for (const Vec2i& chunkPos : chunksToProcess) {
-        // Pre-fetch pointers to the 3x3 neighborhood of chunks to make border lookups instant
-        const Chunk* neighbors[3][3] = { nullptr };
-        for (int dy = -1; dy <= 1; ++dy) {
-            for (int dx = -1; dx <= 1; ++dx) {
-                auto it = m_chunks.find(chunkPos + Vec2i{ dx, dy });
-                if (it != m_chunks.end()) {
-                    neighbors[dy + 1][dx + 1] = &it->second;
-                }
-            }
-        }
-
-        // Safely retrieves a row word even across chunk vertical/horizontal boundaries
-        auto GetChunkRow = [&](int dx, int r) -> uint64_t {
-            int dy = 0;
-            if (r < 0) {
-                dy = -1;
-                r = 63;
-            } else if (r > 63) {
-                dy = 1;
-                r = 0;
-            }
-
-            const Chunk* c = neighbors[dy + 1][dx + 1];
-            return c ? c->rows[r] : 0ULL;
-        };
-
-        Chunk nextChunk;
-        bool hasLiveCells = false;
-
-        for (int r = 0; r < 64; ++r) {
-            // Fetch the 3 raw horizontal rows (North, Center, South) and their West/East neighbors
-            uint64_t nRow = GetChunkRow(0, r - 1);
-            uint64_t nWest = GetChunkRow(-1, r - 1);
-            uint64_t nEast = GetChunkRow(1, r - 1);
-
-            uint64_t cRow = GetChunkRow(0, r);
-            uint64_t cWest = GetChunkRow(-1, r);
-            uint64_t cEast = GetChunkRow(1, r);
-
-            uint64_t sRow = GetChunkRow(0, r + 1);
-            uint64_t sWest = GetChunkRow(-1, r + 1);
-            uint64_t sEast = GetChunkRow(1, r + 1);
-
-            // Construct the 8 directional neighbor bitboards by shifting across borders
-            // (Assuming bit 0 is x=0, shifting left by 1 moves West neighbors into position)
-            uint64_t nw = (nRow << 1) | (nWest >> 63);
-            uint64_t n = nRow;
-            uint64_t ne = (nRow >> 1) | (nEast << 63);
-
-            uint64_t w = (cRow << 1) | (cWest >> 63);
-            uint64_t e = (cRow >> 1) | (cEast << 63);
-
-            uint64_t sw = (sRow << 1) | (sWest >> 63);
-            uint64_t s = sRow;
-            uint64_t se = (sRow >> 1) | (sEast << 63);
-
-            // PARALLEL BITWISE ADDITION:
-            // Sum the 8 neighbor boards into a 4-bit binary counter per cell (c3, c2, c1, c0)
-            uint64_t w1a, w2a, w1b, w2b, w1c, w2c, w2d;
-            uint64_t w2Sum, w4a, w4b;
-            uint64_t c0, c1, c2, c3;
-
-            FullAdd(nw, n, ne, w1a, w2a);
-            FullAdd(w, e, sw, w1b, w2b);
-            FullAdd(w1a, w1b, s, w1c, w2c);
-            HalfAdd(w1c, se, c0, w2d); // c0 is the 1s bit of the count
-
-            FullAdd(w2a, w2b, w2c, w2Sum, w4a);
-            HalfAdd(w2Sum, w2d, c1, w4b); // c1 is the 2s bit of the count
-
-            HalfAdd(w4a, w4b, c2, c3); // c2 is the 4s bit, c3 is the 8s bit
-
-            // Decode the 4-bit counter into exact match masks for counts 0 through 8
-            uint64_t eq[9];
-            eq[0] = ~c3 & ~c2 & ~c1 & ~c0;
-            eq[1] = ~c3 & ~c2 & ~c1 & c0;
-            eq[2] = ~c3 & ~c2 & c1 & ~c0;
-            eq[3] = ~c3 & ~c2 & c1 & c0;
-            eq[4] = ~c3 & c2 & ~c1 & ~c0;
-            eq[5] = ~c3 & c2 & ~c1 & c0;
-            eq[6] = ~c3 & c2 & c1 & ~c0;
-            eq[7] = ~c3 & c2 & c1 & c0;
-            eq[8] = c3 & ~c2 & ~c1 & ~c0;
-
-            uint64_t birth_mask = 0;
-            uint64_t survival_mask = 0;
-            for (int i = 0; i <= 8; ++i) {
-                if (m_birthMask & (1 << i)) {
-                    birth_mask |= eq[i];
-                }
-                if (m_survivalMask & (1 << i)) {
-                    survival_mask |= eq[i];
-                }
-            }
-
-            // A dead cell spawns if in birth_mask; a live cell survives if in survival_mask
-            uint64_t nextRow = (~cRow & birth_mask) | (cRow & survival_mask);
-
-            nextChunk.rows[r] = nextRow;
-            if (nextRow != 0) {
-                hasLiveCells = true;
-            }
-        }
-
-        // Only save the chunk if it contains at least one living cell
-        if (hasLiveCells) {
-            // If this chunk already had a GPU texture last frame, reuse it!
-            auto oldIt = m_chunks.find(chunkPos);
-            if (oldIt != m_chunks.end() && oldIt->second.texture.id != 0) {
-                nextChunk.texture = oldIt->second.texture;
-                oldIt->second.texture = {}; // Nullify old so it doesn't get unloaded
-                nextChunk.isDirty = true;
-            }
-
-            m_nextChunks[chunkPos] = std::move(nextChunk);
-        }
-    }
-
-    std::swap(m_chunks, m_nextChunks);
-}
-
-void Game::Impl::ParseRuleString() {
-    m_birthMask = 0;
-    m_survivalMask = 0;
-
-    enum class ParseMode : uint8_t { NONE, BIRTH, SURVIVAL };
-    ParseMode mode = ParseMode::NONE;
-
-    for (char c : m_ruleString) {
-        if (c == 'B' || c == 'b') {
-            mode = ParseMode::BIRTH;
-        } else if (c == 'S' || c == 's') {
-            mode = ParseMode::SURVIVAL;
-        } else if (std::isdigit(static_cast<unsigned char>(c))) {
-            int digit = c - '0';
-            if (mode == ParseMode::BIRTH) {
-                m_birthMask |= (1 << digit);
-            } else if (mode == ParseMode::SURVIVAL) {
-                m_survivalMask |= (1 << digit);
             }
         }
     }

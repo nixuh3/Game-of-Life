@@ -1,9 +1,9 @@
 #pragma once
 
+#include "Math.h"
 #include <raylib.h>
 #include <bit>
 #include <array>
-#include "Math.h"
 
 namespace GoL {
 
