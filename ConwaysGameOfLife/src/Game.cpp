@@ -1,13 +1,62 @@
 #include "Game.h"
+
+#include <raylib.h>
 #include <raymath.h>
-#include <iostream>
 #include <cmath>
 #include <cctype>
 #include <bit>
+#include <unordered_set>
+#include <cstdint>
+#include <string>
+
+#include "Chunk.h"
+#include "Math.h"
 
 namespace GoL {
 
-Game::Game(const GameSpecs& specs)
+enum CellType : uint8_t { ALIVE, DEAD };
+
+constexpr CellType operator~(CellType type) { return type == ALIVE ? DEAD : ALIVE; }
+
+struct Game::Impl {
+    static constexpr float CELL_SIZE = 20.0f;
+    static constexpr float CHUNK_WORLD_SIZE = 64.0f * CELL_SIZE;
+    static constexpr float CAMERA_SPEED = 600.0f;
+    static constexpr float ZOOM_SPEED = 60.0f;
+
+    int m_windowWidth;
+    int m_windowHeight;
+
+    Camera2D m_camera{};
+
+    ChunkMap m_chunks;
+    ChunkMap m_nextChunks;
+
+    std::string m_ruleString;
+    uint16_t m_birthMask = 0;
+    uint16_t m_survivalMask = 0;
+
+    std::unordered_map<Vec2i, int, Vec2i::Hash> m_neighborCounts;
+
+    Vec2i m_mouseTarget = {};
+    bool m_simulating = false;
+    bool m_showDebugInfo = false;
+    float m_timer = 0.0f;
+    float m_updateInterval = 0.1f;
+
+    explicit Impl(const GameSpecs& specs);
+    ~Impl();
+
+    void Update(float dt);
+    void Draw() const;
+    void ToggleCell(const Vec2i& pos);
+    void Clear();
+    void Randomize();
+    void Step();
+    void ParseRuleString();
+};
+
+Game::Impl::Impl(const GameSpecs& specs)
     : m_windowWidth(specs.windowWidth), m_windowHeight(specs.windowHeight), m_ruleString(specs.ruleString) {
     InitWindow(m_windowWidth, m_windowHeight, "Game of Life");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
@@ -22,16 +71,9 @@ Game::Game(const GameSpecs& specs)
     m_camera.zoom = 1.0f;
 }
 
-Game::~Game() { CloseWindow(); }
+Game::Impl::~Impl() { CloseWindow(); }
 
-void Game::Run() {
-    while (!WindowShouldClose()) {
-        Update(GetFrameTime());
-        Draw();
-    }
-}
-
-void Game::Update(float dt) {
+void Game::Impl::Update(float dt) {
     // Update screen dimensions
     m_windowWidth = GetScreenWidth();
     m_windowHeight = GetScreenHeight();
@@ -39,11 +81,12 @@ void Game::Update(float dt) {
 
     // Mouse inputs
     Vector2 mousePos = GetScreenToWorld2D(GetMousePosition(), m_camera);
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        int mouseX = static_cast<int>(std::floor(mousePos.x / CELL_SIZE));
-        int mouseY = static_cast<int>(std::floor(mousePos.y / CELL_SIZE));
+    int mouseX = static_cast<int>(std::floor(mousePos.x / CELL_SIZE));
+    int mouseY = static_cast<int>(std::floor(mousePos.y / CELL_SIZE));
+    m_mouseTarget = { mouseX, mouseY };
 
-        ToggleCell({ mouseX, mouseY });
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        ToggleCell(m_mouseTarget);
     }
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 delta = GetMouseDelta();
@@ -56,7 +99,7 @@ void Game::Update(float dt) {
         Vector2 mouseWorldBefore = GetScreenToWorld2D(GetMousePosition(), m_camera);
 
         m_camera.zoom = std::exp(std::log(m_camera.zoom) + wheel * 0.1f);
-        m_camera.zoom = Clamp(m_camera.zoom, 0.1f, 3.0f);
+        m_camera.zoom = Clamp(m_camera.zoom, 0.05f, 3.0f);
 
         Vector2 mouseWorldAfter = GetScreenToWorld2D(GetMousePosition(), m_camera);
 
@@ -83,11 +126,12 @@ void Game::Update(float dt) {
     if (IsKeyPressed(KEY_W)) {
         m_updateInterval += 0.05f;
         m_updateInterval = Clamp(m_updateInterval, 0.05f, 2.0f);
-        std::cout << "Update interval: " << m_updateInterval << "\n";
     } else if (IsKeyPressed(KEY_S)) {
         m_updateInterval -= 0.05f;
         m_updateInterval = Clamp(m_updateInterval, 0.05f, 2.0f);
-        std::cout << "Update interval: " << m_updateInterval << "\n";
+    }
+    if (IsKeyPressed(KEY_F3)) {
+        m_showDebugInfo ^= 1;
     }
 
     // Update timer
@@ -98,7 +142,7 @@ void Game::Update(float dt) {
     }
 }
 
-void Game::Draw() const {
+void Game::Impl::Draw() const {
     BeginDrawing();
     ClearBackground(BLACK);
 
@@ -143,11 +187,26 @@ void Game::Draw() const {
 
     EndMode2D();
 
-    DrawFPS(10, 10);
+    if (m_showDebugInfo) {
+        Color color = BLUE;
+
+        auto DrawDebugText = [&, row = 10](std::string_view s, auto... args) mutable {
+            DrawText(TextFormat(s.data(), (args)...), 10, row, 30, color);
+            row += 35;
+        };
+
+        DrawDebugText("%2d FPS", GetFPS());
+        DrawDebugText("Rule string: %s", m_ruleString.c_str());
+        DrawDebugText("Update interval: %.2f", m_updateInterval);
+        DrawDebugText("Simulation speed: %.2f", 1.0f / m_updateInterval);
+        DrawDebugText("Mouse target cell: %d, %d", m_mouseTarget.x, m_mouseTarget.y);
+        DrawDebugText("Mouse position: %d, %d", GetMouseX(), GetMouseY());
+    }
+
     EndDrawing();
 }
 
-void Game::ToggleCell(const Vec2i& pos) {
+void Game::Impl::ToggleCell(const Vec2i& pos) {
     LocalCellPos local = GlobalToLocal(pos);
 
     Chunk& chunk = m_chunks[local.chunkPos];
@@ -159,12 +218,12 @@ void Game::ToggleCell(const Vec2i& pos) {
     }
 }
 
-void Game::Clear() {
+void Game::Impl::Clear() {
     m_simulating = false;
     m_chunks.clear();
 }
 
-void Game::Randomize() {
+void Game::Impl::Randomize() {
     Clear();
 
     Vector2 topLeftWorld = GetScreenToWorld2D({ 0.0f, 0.0f }, m_camera);
@@ -186,7 +245,7 @@ void Game::Randomize() {
     }
 }
 
-void Game::Step() {
+void Game::Impl::Step() {
     m_nextChunks.clear();
 
     // Any active chunk + all 8 of its surrounding empty chunks
@@ -318,7 +377,7 @@ void Game::Step() {
     std::swap(m_chunks, m_nextChunks);
 }
 
-void Game::ParseRuleString() {
+void Game::Impl::ParseRuleString() {
     m_birthMask = 0;
     m_survivalMask = 0;
 
@@ -338,6 +397,20 @@ void Game::ParseRuleString() {
                 m_survivalMask |= (1 << digit);
             }
         }
+    }
+}
+
+// Public Game API Wrapper
+Game::Game(const GameSpecs& specs) : m_impl(std::make_unique<Impl>(specs)) {}
+Game::~Game() = default;
+
+Game::Game(Game&&) noexcept = default;
+Game& Game::operator=(Game&&) noexcept = default;
+
+void Game::Run() {
+    while (!WindowShouldClose()) {
+        m_impl->Update(GetFrameTime());
+        m_impl->Draw();
     }
 }
 
