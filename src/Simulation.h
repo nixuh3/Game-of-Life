@@ -11,4 +11,4 @@ void Step(ChunkMap& current, ChunkMap& next, const RuleSet& rules);
 
 }
 
-}
+} // namespace GoL

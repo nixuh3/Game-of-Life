@@ -1,23 +1,40 @@
 ---
 BasedOnStyle: LLVM
+Language: Cpp
 AlignAfterOpenBracket: false
 AlignArrayOfStructures: Right
+AlignConsecutiveAssignments: Consecutive
 AlignEscapedNewlines: Left
 AlignOperands: DontAlign
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCaseArrows: true
+  AlignCaseColons: false
 AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
 BreakTemplateDeclarations: Yes
-ColumnLimit: 110
-Cpp11BracedListStyle: false
-FixNamespaceComments: false
-IndentCaseLabels: true
+BreakBeforeBraces: Attach
+ColumnLimit: 120
+IncludeCategories:
+  - Regex: '.*(pch\.h|pch\.hpp)"'
+    Priority: 1
+    SortPriority: 0
+    CaseSensitive: false
+  - Regex: '^".*"'
+    Priority: 2
+    SortPriority: 0
+    CaseSensitive: false
+  - Regex: "^<.*>"
+    Priority: 3
+    SortPriority: 0
+    CaseSensitive: false
 IndentPPDirectives: BeforeHash
 IndentWidth: 4
-InsertBraces: true
 InsertNewlineAtEOF: true
 PackConstructorInitializers: NextLine
 PointerAlignment: Left
-SortIncludes: Never
-Standard: c++20
 TabWidth: 4
 WrapNamespaceBodyWithEmptyLines: Always
 ...

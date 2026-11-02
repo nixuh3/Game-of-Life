@@ -1,13 +1,34 @@
 #include "Simulation.h"
-#include <unordered_set>
+#include <algorithm>
+#include <execution>
+#include <ranges>
+#include <vector>
 
 namespace GoL {
+
+namespace {
+
+// Half Adder: Sums two 64-bit words bit-by-bit
+constexpr void HalfAdd(uint64_t a, uint64_t b, uint64_t& sum, uint64_t& carry) {
+    sum   = a ^ b;
+    carry = a & b;
+}
+
+// Full Adder: Sums three 64-bit words bit-by-bit
+constexpr void FullAdd(uint64_t a, uint64_t b, uint64_t c, uint64_t& sum, uint64_t& carry) {
+    sum   = a ^ b ^ c;
+    carry = (a & b) | (c & (a ^ b));
+}
+
+} // namespace
 
 void GoL::Simluation::Step(ChunkMap& current, ChunkMap& next, const RuleSet& rules) {
     next.clear();
 
     // Any active chunk + all 8 of its surrounding empty chunks
-    std::unordered_set<Vec2i, Vec2i::Hash> chunksToProcess;
+    std::vector<sf::Vector2i> chunksToProcess;
+    chunksToProcess.reserve(current.size() * 9);
+
     for (const auto& [pos, chunk] : current) {
         if (chunk.IsEmpty()) {
             continue;
@@ -15,67 +36,87 @@ void GoL::Simluation::Step(ChunkMap& current, ChunkMap& next, const RuleSet& rul
 
         for (int dy = -1; dy <= 1; ++dy) {
             for (int dx = -1; dx <= 1; ++dx) {
-                chunksToProcess.insert(pos + Vec2i{ dx, dy });
+                chunksToProcess.push_back(pos + sf::Vector2i{dx, dy});
             }
         }
     }
 
+    // Sort and erase duplicates
+    std::sort(chunksToProcess.begin(), chunksToProcess.end(),
+        [](sf::Vector2i a, sf::Vector2i b) { return (a.y != b.y) ? (a.y < b.y) : (a.x < b.x); });
+    chunksToProcess.erase(std::unique(chunksToProcess.begin(), chunksToProcess.end()), chunksToProcess.end());
+
+    std::vector<std::optional<Chunk>> threadResults(chunksToProcess.size());
+    std::vector<size_t> indices(chunksToProcess.size());
+    std::iota(indices.begin(), indices.end(), size_t{0});
+
     // Evaluate each chunk in parallel across its 64-bit rows
-    for (const Vec2i& chunkPos : chunksToProcess) {
+    std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t i) {
+        sf::Vector2i chunkPos = chunksToProcess[i];
+
         // Pre-fetch pointers to the 3x3 neighborhood of chunks to make border lookups instant
-        const Chunk* neighbors[3][3] = { nullptr };
+        const Chunk* neighbors[3][3] = {nullptr};
         for (int dy = -1; dy <= 1; ++dy) {
             for (int dx = -1; dx <= 1; ++dx) {
-                auto it = current.find(chunkPos + Vec2i{ dx, dy });
+                auto it = current.find(chunkPos + sf::Vector2i{dx, dy});
                 if (it != current.end()) {
                     neighbors[dy + 1][dx + 1] = &it->second;
                 }
             }
         }
 
+        Chunk nextChunk;
+        bool hasLiveCells = false;
+
         // Safely retrieves a row word even across chunk vertical/horizontal boundaries
         auto GetChunkRow = [&](int dx, int r) -> uint64_t {
             int dy = 0;
             if (r < 0) {
                 dy = -1;
-                r = 63;
+                r  = 63;
             } else if (r > 63) {
                 dy = 1;
-                r = 0;
+                r  = 0;
             }
 
             const Chunk* c = neighbors[dy + 1][dx + 1];
             return c ? c->rows[r] : 0ULL;
         };
 
-        Chunk nextChunk;
-        bool hasLiveCells = false;
+        // Fetch 66 rows for West, Center, and East columns
+        uint64_t colW[66], colC[66], colE[66];
+
+        for (int r = -1; r <= 64; ++r) {
+            colW[r + 1] = GetChunkRow(-1, r);
+            colC[r + 1] = GetChunkRow(0, r);
+            colE[r + 1] = GetChunkRow(1, r);
+        }
 
         for (int r = 0; r < 64; ++r) {
             // Fetch the 3 raw horizontal rows (North, Center, South) and their West/East neighbors
-            uint64_t nRow = GetChunkRow(0, r - 1);
-            uint64_t nWest = GetChunkRow(-1, r - 1);
-            uint64_t nEast = GetChunkRow(1, r - 1);
+            uint64_t nRow  = colC[r];
+            uint64_t nWest = colW[r];
+            uint64_t nEast = colE[r];
 
-            uint64_t cRow = GetChunkRow(0, r);
-            uint64_t cWest = GetChunkRow(-1, r);
-            uint64_t cEast = GetChunkRow(1, r);
+            uint64_t cRow  = colC[r + 1];
+            uint64_t cWest = colW[r + 1];
+            uint64_t cEast = colE[r + 1];
 
-            uint64_t sRow = GetChunkRow(0, r + 1);
-            uint64_t sWest = GetChunkRow(-1, r + 1);
-            uint64_t sEast = GetChunkRow(1, r + 1);
+            uint64_t sRow  = colC[r + 2];
+            uint64_t sWest = colW[r + 2];
+            uint64_t sEast = colE[r + 2];
 
             // Construct the 8 directional neighbor bitboards by shifting across borders
             // (Assuming bit 0 is x=0, shifting left by 1 moves West neighbors into position)
             uint64_t nw = (nRow << 1) | (nWest >> 63);
-            uint64_t n = nRow;
+            uint64_t n  = nRow;
             uint64_t ne = (nRow >> 1) | (nEast << 63);
 
             uint64_t w = (cRow << 1) | (cWest >> 63);
             uint64_t e = (cRow >> 1) | (cEast << 63);
 
             uint64_t sw = (sRow << 1) | (sWest >> 63);
-            uint64_t s = sRow;
+            uint64_t s  = sRow;
             uint64_t se = (sRow >> 1) | (sEast << 63);
 
             // PARALLEL BITWISE ADDITION:
@@ -106,7 +147,7 @@ void GoL::Simluation::Step(ChunkMap& current, ChunkMap& next, const RuleSet& rul
             eq[7] = ~c3 & c2 & c1 & c0;
             eq[8] = c3 & ~c2 & ~c1 & ~c0;
 
-            uint64_t birth_mask = 0;
+            uint64_t birth_mask    = 0;
             uint64_t survival_mask = 0;
             for (int i = 0; i <= 8; ++i) {
                 if (rules.birthMask & (1 << i)) {
@@ -126,21 +167,29 @@ void GoL::Simluation::Step(ChunkMap& current, ChunkMap& next, const RuleSet& rul
             }
         }
 
-        // Only save the chunk if it contains at least one living cell
         if (hasLiveCells) {
-            // If this chunk already had a GPU texture last frame, reuse it!
-            auto oldIt = current.find(chunkPos);
-            if (oldIt != current.end() && oldIt->second.texture.id != 0) {
-                nextChunk.texture = oldIt->second.texture;
-                oldIt->second.texture = {}; // Nullify old so it doesn't get unloaded
-                nextChunk.isDirty = true;
-            }
-
-            next[chunkPos] = std::move(nextChunk);
+            threadResults[i] = std::move(nextChunk);
         }
+    });
+
+    // Single-threaded cleanup: Move the valid results into the unordered_map
+    for (size_t i = 0; i < chunksToProcess.size(); ++i) {
+        if (!threadResults[i].has_value())
+            continue;
+
+        auto pos = chunksToProcess[i];
+
+        auto oldIt = current.find(pos);
+        if (oldIt != current.end() && oldIt->second.texture.getSize() != sf::Vector2u{0, 0}) {
+
+            threadResults[i]->texture = std::move(oldIt->second.texture);
+            threadResults[i]->isDirty = true;
+        }
+
+        next[pos] = std::move(*threadResults[i]);
     }
 
     std::swap(current, next);
 }
 
-}
+} // namespace GoL

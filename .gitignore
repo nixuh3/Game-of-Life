@@ -1,6 +1,7 @@
 build/
 build-int/
 .vs/
+.vscode/
 
 *.user
 *.slnx

@@ -6,7 +6,7 @@ namespace GoL {
 RuleSet RuleSet::Parse(std::string_view ruleStr) {
     RuleSet rules;
 
-    enum class ParseMode : uint8_t { NONE, BIRTH, SURVIVAL };
+    enum class ParseMode : std::uint8_t { NONE, BIRTH, SURVIVAL };
     ParseMode mode = ParseMode::NONE;
 
     for (char c : ruleStr) {
@@ -27,4 +27,4 @@ RuleSet RuleSet::Parse(std::string_view ruleStr) {
     return rules;
 }
 
-}
+} // namespace GoL

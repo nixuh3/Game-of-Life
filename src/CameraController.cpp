@@ -1,40 +1,54 @@
 #include "CameraController.h"
-#include <raymath.h>
 #include <cmath>
 
 namespace GoL {
 
-CameraController::CameraController(int windowWidth, int windowHeight) {
-    m_camera.offset = { static_cast<float>(windowWidth) / 2.0f, static_cast<float>(windowHeight) / 2.0f };
-    m_camera.target = { 0.0f, 0.0f };
-    m_camera.rotation = 0.0f;
-    m_camera.zoom = 1.0f;
+CameraController::CameraController(sf::Vector2u windowSize) {
+    m_camera.setCenter(sf::Vector2f(windowSize) / 2.0f);
+    m_camera.setSize(sf::Vector2f(windowSize));
 }
 
-void CameraController::Update(float dt, int windowWidth, int windowHeight) {
-    m_camera.offset = { static_cast<float>(windowWidth) / 2.0f, static_cast<float>(windowHeight) / 2.0f };
+void CameraController::Update(float dt, const sf::RenderWindow& window, float scrollDelta) {
+    // Panning
+    sf::Vector2i currentMousePos = sf::Mouse::getPosition(window);
+    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right)) {
+        // Convert mouse positions to world space to get the actual movement delta
+        sf::Vector2f oldPos = window.mapPixelToCoords(m_lastMousePos, m_camera);
+        sf::Vector2f newPos = window.mapPixelToCoords(currentMousePos, m_camera);
 
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-        Vector2 delta = GetMouseDelta();
-
-        m_camera.target.x -= delta.x / m_camera.zoom;
-        m_camera.target.y -= delta.y / m_camera.zoom;
+        // Move camera in the opposite direction of the mouse swipe
+        m_camera.move(oldPos - newPos);
     }
-    float wheel = GetMouseWheelMove();
-    if (wheel != 0.0f) {
-        Vector2 mouseWorldBefore = GetScreenToWorld2D(GetMousePosition(), m_camera);
+    m_lastMousePos = currentMousePos;
 
-        m_camera.zoom = std::exp(std::log(m_camera.zoom) + wheel * ZOOM_SPEED);
-        m_camera.zoom = Clamp(m_camera.zoom, 0.05f, 3.0f);
+    // Zooming
+    if (scrollDelta != 0.0f) {
+        // Grab the mouse position in world space BEFORE zooming
+        sf::Vector2f mouseWorldBefore = window.mapPixelToCoords(currentMousePos, m_camera);
 
-        Vector2 mouseWorldAfter = GetScreenToWorld2D(GetMousePosition(), m_camera);
+        // Calculate the new zoom factor and clamp it
+        // Note: SFML zooms OUT with larger values, so we flip the sign from Raylib
+        float desiredZoom = std::exp(std::log(m_currentZoom) - scrollDelta * ZOOM_SPEED);
+        float newZoom     = std::clamp(desiredZoom, 0.2f, 5.0f);
 
-        m_camera.target.x += (mouseWorldBefore.x - mouseWorldAfter.x);
-        m_camera.target.y += (mouseWorldBefore.y - mouseWorldAfter.y);
+        // Calculate the relative factor to apply to the SFML view
+        float factor = newZoom / m_currentZoom;
+        m_camera.zoom(factor);
+        m_currentZoom = newZoom;
+
+        // Grab the mouse position in world space AFTER zooming
+        sf::Vector2f mouseWorldAfter = window.mapPixelToCoords(currentMousePos, m_camera);
+
+        // Shift the camera so the mouse stays over the same world coordinate
+        m_camera.move(mouseWorldBefore - mouseWorldAfter);
     }
 
-    m_camera.target.x += static_cast<float>(IsKeyDown(KEY_RIGHT) - IsKeyDown(KEY_LEFT)) * dt * CAMERA_SPEED;
-    m_camera.target.y += static_cast<float>(IsKeyDown(KEY_DOWN) - IsKeyDown(KEY_UP)) * dt * CAMERA_SPEED;
+    // Movement
+    sf::Vector2i d = {
+        sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right) - sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left),
+        sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down) - sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up)};
+
+    m_camera.move(static_cast<sf::Vector2f>(d) * dt * CAMERA_SPEED * m_currentZoom);
 }
 
-}
+} // namespace GoL
