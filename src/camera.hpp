@@ -2,7 +2,7 @@
 
 #include <raylib.h>
 
-namespace GoL {
+namespace gol {
 
 class CameraController {
   public:

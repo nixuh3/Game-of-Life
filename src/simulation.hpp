@@ -1,9 +1,9 @@
 #pragma once
 
-#include "Chunk.h"
-#include "Rules.h"
+#include "chunk.hpp"
+#include "rules.hpp"
 
-namespace GoL {
+namespace gol {
 
 namespace Simluation {
 

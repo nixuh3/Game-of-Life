@@ -1,9 +1,9 @@
-#include "Simulation.h"
+#include "simulation.hpp"
 #include <unordered_set>
 
-namespace GoL {
+namespace gol {
 
-void GoL::Simluation::Step(ChunkMap& current, ChunkMap& next, const RuleSet& rules) {
+void gol::Simluation::Step(ChunkMap& current, ChunkMap& next, const RuleSet& rules) {
     next.clear();
 
     // Any active chunk + all 8 of its surrounding empty chunks

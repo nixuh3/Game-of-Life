@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 
-namespace GoL {
+namespace gol {
 
 template <typename T>
 struct Vec2 {

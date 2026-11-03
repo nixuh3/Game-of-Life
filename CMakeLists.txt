@@ -1,34 +1,42 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(GameOfLife LANGUAGES CXX)
+project(game-of-life LANGUAGES CXX)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(SOURCES
-    src/Main.cpp
-    src/Chunk.cpp
-    src/CameraController.cpp
-    src/Game.cpp
-    src/Rules.cpp
-    src/Simulation.cpp
-    
-    src/Chunk.h
-    src/CameraController.h
-    src/Game.h
-    src/Rules.h
-    src/Simulation.h
-    src/Math.h
+include(FetchContent)
+
+FetchContent_Declare(
+    raylib
+    GIT_REPOSITORY https://github.com/raysan5/raylib.git
+    GIT_TAG        6.2
 )
 
-add_executable(GameOfLife ${SOURCES})
+FetchContent_MakeAvailable(raylib)
 
-target_include_directories(GameOfLife PRIVATE external/raylib-6.0/include)
+set(SOURCES
+    src/main.cpp
+    src/chunk.cpp
+    src/camera.cpp
+    src/game.cpp
+    src/rules.cpp
+    src/simulation.cpp
 
-target_link_directories(GameOfLife PRIVATE external/raylib-6.0/lib)
+    src/chunk.hpp
+    src/camera.hpp
+    src/game.hpp
+    src/rules.hpp
+    src/simulation.hpp
+    src/math.hpp
+)
 
-target_link_libraries(GameOfLife PRIVATE
+add_executable(game-of-life ${SOURCES})
+
+target_link_libraries(game-of-life PRIVATE
     raylib
     opengl32
     gdi32
@@ -37,4 +45,4 @@ target_link_libraries(GameOfLife PRIVATE
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${SOURCES})
 
-set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT GameOfLife)
+set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT game-of-life)

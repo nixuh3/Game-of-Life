@@ -1,8 +1,8 @@
-#include "CameraController.h"
+#include "camera.hpp"
 #include <raymath.h>
 #include <cmath>
 
-namespace GoL {
+namespace gol {
 
 CameraController::CameraController(int windowWidth, int windowHeight) {
     m_camera.offset = { static_cast<float>(windowWidth) / 2.0f, static_cast<float>(windowHeight) / 2.0f };

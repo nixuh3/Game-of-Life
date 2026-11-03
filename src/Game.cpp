@@ -1,51 +1,15 @@
-#include "Game.h"
-#include "Chunk.h"
-#include "Math.h"
-#include "Rules.h"
-#include "Simulation.h"
-#include "CameraController.h"
+#include "game.hpp"
+#include "math.hpp"
+#include "simulation.hpp"
 #include <raymath.h>
 
-namespace GoL {
+namespace gol {
 
 enum CellType : uint8_t { ALIVE, DEAD };
 
 constexpr CellType operator~(CellType type) { return type == ALIVE ? DEAD : ALIVE; }
 
-struct Game::Impl {
-    static constexpr float CELL_SIZE = 20.0f;
-    static constexpr float CHUNK_WORLD_SIZE = 64.0f * CELL_SIZE;
-
-    int m_windowWidth;
-    int m_windowHeight;
-
-    CameraController m_camera;
-
-    ChunkMap m_chunks;
-    ChunkMap m_nextChunks;
-
-    std::string_view m_ruleString;
-    RuleSet m_rules;
-
-    std::unordered_map<Vec2i, int, Vec2i::Hash> m_neighborCounts;
-
-    Vec2i m_mouseTarget = {};
-    bool m_simulating = false;
-    bool m_showDebugInfo = false;
-    float m_timer = 0.0f;
-    float m_updateInterval = 0.1f;
-
-    explicit Impl(const GameSpecs& specs);
-    ~Impl();
-
-    void Update(float dt);
-    void Draw();
-    void ToggleCell(const Vec2i& pos);
-    void Clear();
-    void Randomize();
-};
-
-Game::Impl::Impl(const GameSpecs& specs)
+Game::Game(const GameSpecs& specs)
     : m_windowWidth(specs.windowWidth),
       m_windowHeight(specs.windowHeight),
       m_ruleString(specs.ruleString),
@@ -59,9 +23,16 @@ Game::Impl::Impl(const GameSpecs& specs)
     m_rules = RuleSet::Parse(m_ruleString);
 }
 
-Game::Impl::~Impl() { CloseWindow(); }
+Game::~Game() { CloseWindow(); }
 
-void Game::Impl::Update(float dt) {
+void Game::Run() {
+    while (!WindowShouldClose()) {
+        Update(GetFrameTime());
+        Draw();
+    }
+}
+
+void Game::Update(float dt) {
     // Update screen dimensions
     m_windowWidth = GetScreenWidth();
     m_windowHeight = GetScreenHeight();
@@ -110,7 +81,7 @@ void Game::Impl::Update(float dt) {
     }
 }
 
-void Game::Impl::Draw() {
+void Game::Draw() {
     BeginDrawing();
     ClearBackground(BLACK);
 
@@ -170,7 +141,7 @@ void Game::Impl::Draw() {
     EndDrawing();
 }
 
-void Game::Impl::ToggleCell(const Vec2i& pos) {
+void Game::ToggleCell(const Vec2i& pos) {
     LocalCellPos local = GlobalToLocal(pos);
 
     Chunk& chunk = m_chunks[local.chunkPos];
@@ -182,12 +153,12 @@ void Game::Impl::ToggleCell(const Vec2i& pos) {
     }
 }
 
-void Game::Impl::Clear() {
+void Game::Clear() {
     m_simulating = false;
     m_chunks.clear();
 }
 
-void Game::Impl::Randomize() {
+void Game::Randomize() {
     Clear();
 
     Vector2 topLeftWorld = m_camera.GetTopLeftWorld();
@@ -205,20 +176,6 @@ void Game::Impl::Randomize() {
                 m_chunks[local.chunkPos].SetCell(local.localPos);
             }
         }
-    }
-}
-
-// Public Game API Wrapper
-Game::Game(const GameSpecs& specs) : m_impl(std::make_unique<Impl>(specs)) {}
-Game::~Game() = default;
-
-Game::Game(Game&&) noexcept = default;
-Game& Game::operator=(Game&&) noexcept = default;
-
-void Game::Run() {
-    while (!WindowShouldClose()) {
-        m_impl->Update(GetFrameTime());
-        m_impl->Draw();
     }
 }
 

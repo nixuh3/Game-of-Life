@@ -1,7 +1,7 @@
-#include "Rules.h"
+#include "rules.hpp"
 #include <cctype>
 
-namespace GoL {
+namespace gol {
 
 RuleSet RuleSet::Parse(std::string_view ruleStr) {
     RuleSet rules;

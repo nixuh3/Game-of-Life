@@ -1,9 +1,8 @@
 #pragma once
 
 #include <string_view>
-#include <memory>
 
-namespace GoL {
+namespace gol {
 
 namespace Rules {
 
@@ -21,28 +20,11 @@ static constexpr std::string_view Anneal = "B4678/S35678";
 
 }
 
-struct GameSpecs {
-    std::string_view ruleString = Rules::Life;
-    int windowWidth = 1920;
-    int windowHeight = 1080;
-};
+struct RuleSet {
+    uint16_t birthMask = 0;
+    uint16_t survivalMask = 0;
 
-class Game {
-  public:
-    Game(const GameSpecs& specs = {});
-    ~Game();
-
-    Game(const Game&) = delete;
-    Game& operator=(const Game&) = delete;
-
-    Game(Game&&) noexcept;
-    Game& operator=(Game&&) noexcept;
-
-    void Run();
-
-  private:
-    struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    static RuleSet Parse(std::string_view ruleStr);
 };
 
 }
