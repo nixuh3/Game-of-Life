@@ -1,8 +1,19 @@
+.vs/
+.vscode/
+.cache/
+.vscode/
+.idea/
 build/
 build-int/
-.vs/
 
-*.user
-*.slnx
-*.vcxproj
-*.filters
+*.out
+*.app
+*.exe
+*.o
+*.obj
+*.elf
+*.bin
+*.a
+*.lib
+*.dll
+*.pdb

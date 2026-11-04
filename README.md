@@ -30,8 +30,10 @@ An interactive, infinite-canvas Cellular Automata engine that lets you design cu
 | :-------------------- | :--------------- |
 | **Start / Pause**     | <kbd>Space</kbd> |
 | **Step Single Frame** | <kbd>X</kbd>     |
-| **Increase Speed**    | <kbd>W</kbd>     |
-| **Decrease Speed**    | <kbd>S</kbd>     |
+| **Increase Speed**    | <kbd>L</kbd>     |
+| **Decrease Speed**    | <kbd>H</kbd>     |
+| **Double Speed**      | <kbd>J</kbd>     |
+| **Halve Speed**       | <kbd>K</kbd>     |
 
 ### Utilities
 
@@ -40,7 +42,15 @@ An interactive, infinite-canvas Cellular Automata engine that lets you design cu
 | **Randomize Canvas**   | <kbd>R</kbd>   |
 | **Clear Canvas**       | <kbd>C</kbd>   |
 | **Toggle Debug Stats** | <kbd>F3</kbd>  |
+| **Toggle Fullscreen**  | <kbd>F11</kbd> |
 | **Exit**               | <kbd>Esc</kbd> |
+
+### Blueprints
+
+| Action                       | Input            |
+| :--------------------------- | :--------------- |
+| **Choose Blueprint**         | <kbd>B</kbd>     |
+| **Paste Blueprint At Mouse** | <kbd>Enter</kbd> |
 
 ---
 
@@ -63,5 +73,5 @@ cmake -B build
 cmake --build build
 
 # Run the executable
-./GameOfLife
+.\build\game-of-life # Path to executable
 ```
